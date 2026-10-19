@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Studio</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f6fb;
+            color: #1e293b;
+        }
+
+        header {
+            background: #4338ca;
+            color: white;
+            padding: 22px 30px;
+        }
+
+        header h1 {
+            margin: 0 0 6px;
+        }
+
+        header p {
+            margin: 0;
+            color: #e0e7ff;
+        }
+
+        main {
+            max-width: 1000px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 24px;
+            margin-bottom: 24px;
+            border-radius: 12px;
+            box-shadow: 0 3px 14px #0000000b;
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 7px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            font-size: 15px;
+        }
+
+        button {
+            padding: 11px 16px;
+            border: 0;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            margin: 4px 4px 4px 0;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .primary {
+            background: #4338ca;
+            color: white;
+        }
+
+        .secondary {
+            background: #e2e8f0;
+            color: #1e293b;
+        }
+
+        .danger {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        #productCatalog {
+            display: none;
+        }
+
+        #productCatalog.show {
+            display: block;
+        }
+
+        #message {
+            display: none;
+            padding: 12px;
+            margin: 14px 0;
+            border-radius: 7px;
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        #message.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 13px;
+            border-bottom: 1px solid #e2e8f0;
+            text-align: left;
+        }
+
+        th {
+            background: #f8fafc;
+        }
+
+        .empty {
+            padding: 25px 0;
+            color: #64748b;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar input {
+            max-width: 300px;
+        }
+
+        @media (max-width: 600px) {
+            header {
+                padding: 20px;
+            }
+
+            main {
+                margin-top: 20px;
+                padding: 0 12px;
+            }
+
+            .card {
+                padding: 17px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>Product Studio</h1>
+    <p>Create and manage your products</p>
+</header>
+
+<main>
+
+    <!-- Add Product Form -->
+    <section class="card">
+        <h2 id="formTitle">Add a Product</h2>
+
+        <form id="productForm">
+            <div class="form-group">
+                <label for="productName">Product Name</label>
+                <input
+                    type="text"
+                    id="productName"
+                    name="name"
+                    placeholder="Enter product name"
+                    maxlength="200"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label for="productPrice">Price (₹)</label>
+                <input
+                    type="number"
+                    id="productPrice"
+                    name="price"
+                    placeholder="Enter product price"
+                    min="0"
+                    step="0.01"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="primary" id="saveButton">
+                Save Product
+            </button>
+
+            <button
+                type="button"
+                class="secondary"
+                id="cancelEditButton"
+                hidden
+            >
+                Cancel Edit
+            </button>
+        </form>
+
+        <div id="message" role="status"></div>
+    </section>
+
+    <!-- Fetch Products Button -->
+    <section class="card">
+        <div class="toolbar">
+            <div>
+                <h2>Product Catalog</h2>
+                <p>Click Fetch Products to view saved products.</p>
+            </div>
+
+            <button type="button" class="primary" id="fetchButton">
+                Fetch Products
+            </button>
+        </div>
+    </section>
+
+    <!-- Hidden until Fetch Products is clicked -->
+    <section class="card" id="productCatalog">
+        <div class="toolbar">
+            <h2>Saved Products</h2>
+
+            <input
+                type="search"
+                id="searchInput"
+                placeholder="Search products..."
+                aria-label="Search products"
+            >
+        </div>
+
+        <p id="productCount">Products: 0</p>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Product Name</th>
+                        <th>Price</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody id="productRows"></tbody>
+            </table>
+        </div>
+
+        <p id="emptyState" class="empty" hidden>
+            No products found.
+        </p>
+    </section>
+
+</main>
+
+<script>
+    // The frontend is served by the gateway on the same origin.
+    const API_URL = "/products";
+
+    const form = document.getElementById("productForm");
+    const nameInput = document.getElementById("productName");
+    const priceInput = document.getElementById("productPrice");
+    const saveButton = document.getElementById("saveButton");
+    const cancelEditButton =
+        document.getElementById("cancelEditButton");
+    const fetchButton = document.getElementById("fetchButton");
+    const catalog = document.getElementById("productCatalog");
+    const productRows = document.getElementById("productRows");
+    const productCount = document.getElementById("productCount");
+    const emptyState = document.getElementById("emptyState");
+    const searchInput = document.getElementById("searchInput");
+    const message = document.getElementById("message");
+    const formTitle = document.getElementById("formTitle");
+
+    let products = [];
+    let editingId = null;
+    let hasFetched = false;
+
+    async function apiRequest(url, options = {}) {
+        const response = await fetch(url, options);
+
+        if (!response.ok) {
+            let errorMessage = `Request failed: ${response.status}`;
+
+            try {
+                const data = await response.json();
+                errorMessage = data.detail || errorMessage;
+            } catch {
+                // Keep the default error message.
+            }
+
+            throw new Error(errorMessage);
+        }
+
+        if (response.status === 204) {
+            return null;
+        }
+
+        return response.json();
+    }
+
+    function showMessage(text, isError = false) {
+        message.textContent = text;
+        message.classList.toggle("error", isError);
+        message.style.display = "block";
+    }
+
+    function clearMessage() {
+        message.style.display = "none";
+        message.textContent = "";
+        message.classList.remove("error");
+    }
+
+    function formatPrice(price) {
+        return new Intl.NumberFormat("en-IN", {
+            style: "currency",
+            currency: "INR"
+        }).format(Number(price) || 0);
+    }
+
+    function renderProducts() {
+        const searchTerm = searchInput.value.trim().toLowerCase();
+
+        const filteredProducts = products.filter(product =>
+            String(product.name || "")
+                .toLowerCase()
+                .includes(searchTerm)
+        );
+
+        productRows.replaceChildren();
+
+        filteredProducts.forEach(product => {
+            const row = document.createElement("tr");
+
+            const idCell = document.createElement("td");
+            idCell.textContent = product.id ?? "";
+
+            const nameCell = document.createElement("td");
+            nameCell.textContent = product.name ?? "";
+
+            const priceCell = document.createElement("td");
+            priceCell.textContent = formatPrice(product.price);
+
+            const actionsCell = document.createElement("td");
+
+            const editButton = document.createElement("button");
+            editButton.type = "button";
+            editButton.className = "secondary";
+            editButton.textContent = "Edit";
+            editButton.addEventListener("click", () => {
+                startEditing(product);
+            });
+
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "danger";
+            deleteButton.textContent = "Delete";
+            deleteButton.addEventListener("click", () => {
+                deleteProduct(product.id);
+            });
+
+            actionsCell.append(editButton, deleteButton);
+            row.append(idCell, nameCell, priceCell, actionsCell);
+            productRows.appendChild(row);
+        });
+
+        productCount.textContent =
+            `Showing ${filteredProducts.length} of ${products.length} products`;
+
+        emptyState.hidden = filteredProducts.length !== 0;
+    }
+
+    async function loadProducts() {
+        fetchButton.disabled = true;
+        fetchButton.textContent = "Loading...";
+
+        try {
+            const data = await apiRequest(API_URL);
+
+            if (!Array.isArray(data)) {
+                throw new Error("Unexpected response from products API.");
+            }
+
+            products = data;
+            hasFetched = true;
+            renderProducts();
+            showMessage("Products loaded successfully.");
+        } catch (error) {
+            showMessage(
+                `Unable to fetch products: ${error.message}`,
+                true
+            );
+        } finally {
+            fetchButton.disabled = false;
+            fetchButton.textContent = "Fetch Products";
+        }
+    }
+
+    // Save a new product or update an existing product.
+    form.addEventListener("submit", async event => {
+        event.preventDefault();
+        clearMessage();
+
+        const name = nameInput.value.trim();
+        const price = Number(priceInput.value);
+
+        if (!name || !Number.isFinite(price) || price < 0) {
+            showMessage("Enter a valid product name and price.", true);
+            return;
+        }
+
+        const payload = { name, price };
+
+        saveButton.disabled = true;
+
+        try {
+            const isEditing = editingId !== null;
+            const url = isEditing
+                ? `${API_URL}/${encodeURIComponent(editingId)}`
+                : API_URL;
+
+            const savedProduct = await apiRequest(url, {
+                method: isEditing ? "PUT" : "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+
+            resetForm();
+            showMessage(
+                isEditing
+                    ? "Product updated successfully."
+                    : "Product saved successfully."
+            );
+
+            // Keep the catalog hidden unless the user has fetched it.
+            if (hasFetched) {
+                if (isEditing) {
+                    products = products.map(product =>
+                        String(product.id) === String(editingId)
+                            ? savedProduct
+                            : product
+                    );
+                } else {
+                    products.push(savedProduct);
+                }
+
+                renderProducts();
+            }
+        } catch (error) {
+            showMessage(`Unable to save product: ${error.message}`, true);
+        } finally {
+            saveButton.disabled = false;
+        }
+    });
+
+    function startEditing(product) {
+        editingId = product.id;
+
+        nameInput.value = product.name;
+        priceInput.value = product.price;
+
+        formTitle.textContent = "Edit Product";
+        saveButton.textContent = "Save Changes";
+        cancelEditButton.hidden = false;
+
+        form.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+
+        nameInput.focus();
+    }
+
+    function resetForm() {
+        form.reset();
+        editingId = null;
+        formTitle.textContent = "Add a Product";
+        saveButton.textContent = "Save Product";
+        cancelEditButton.hidden = true;
+    }
+
+    cancelEditButton.addEventListener("click", () => {
+        resetForm();
+        clearMessage();
+    });
+
+    async function deleteProduct(id) {
+        const product = products.find(
+            item => String(item.id) === String(id)
+        );
+
+        if (!product) {
+            return;
+        }
+
+        if (!confirm(`Delete "${product.name}"?`)) {
+            return;
+        }
+
+        try {
+            await apiRequest(
+                `${API_URL}/${encodeURIComponent(id)}`,
+                { method: "DELETE" }
+            );
+
+            products = products.filter(
+                item => String(item.id) !== String(id)
+            );
+
+            renderProducts();
+            showMessage("Product deleted successfully.");
+        } catch (error) {
+            showMessage(`Unable to delete product: ${error.message}`, true);
+        }
+    }
+
+    // Show the list only when the user clicks Fetch Products.
+    fetchButton.addEventListener("click", async () => {
+        catalog.classList.add("show");
+        await loadProducts();
+
+        catalog.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+    });
+
+    searchInput.addEventListener("input", renderProducts);
+</script>
+
+</body>
+</html>
