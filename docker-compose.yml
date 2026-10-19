@@ -1,12 +1,12 @@
 services:
   postgres:
-    build: ./postgres
+    build: ./postgress
     environment:
       POSTGRES_DB: products
       POSTGRES_USER: appuser
       POSTGRES_PASSWORD: localdevpassword
     ports: ["5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U appuser -d products"]
       interval: 5s
