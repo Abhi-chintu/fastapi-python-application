@@ -1,0 +1,34 @@
+services:
+  postgres:
+    build: ./postgres
+    environment:
+      POSTGRES_DB: products
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: localdevpassword
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d products"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  products:
+    build: ./products
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: products
+      DB_USER: appuser
+      DB_PASSWORD: localdevpassword
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["8001:8001"]
+  gateway:
+    build: ./gateway
+    environment:
+      PRODUCTS_URL: http://products:8001
+    depends_on: [products]
+    ports: ["8000:8000"]
+volumes:
+  pgdata:
