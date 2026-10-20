@@ -42,6 +42,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "postgres.secretName" . }}
                   key: {{ .Values.auth.keys.database }}
+            - name: PGDATA
+              value: {{ .Values.postgresDataDir | quote }}
           readinessProbe:
             exec:
               command:

@@ -10,7 +10,7 @@ auth:
   username: appuser
   database: products
   password: ""
-  existingSecret: ""
+  existingSecret: postgres-auth
   keys:
     username: POSTGRES_USER
     password: POSTGRES_PASSWORD
@@ -22,9 +22,11 @@ service:
 
 persistence:
   enabled: true
-  storageClassName: ""
+  storageClassName: ebs-csi-gp3
   accessModes:
     - ReadWriteOnce
   size: 8Gi
+
+postgresDataDir: /var/lib/postgresql/data/pgdata
 
 resources: {}
