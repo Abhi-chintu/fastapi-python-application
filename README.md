@@ -35,6 +35,22 @@ Python application deployment project
       --from-literal=POSTGRES_DB=products \
       --dry-run=client -o yaml | kubectl apply -f -
 
+**Create storage class**
+
+      kubectl apply -f - <<'EOF'
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: ebs-csi-gp3
+      provisioner: ebs.csi.aws.com
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      parameters:
+        type: gp3
+        fsType: ext4
+      EOF
+
+
 **Goto EKS dashboard and add EBS-CSI-driver addon**
 
     eksctl create iamserviceaccount \
