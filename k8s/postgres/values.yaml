@@ -1,0 +1,32 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: postgres
+  tag: 16-alpine
+  pullPolicy: IfNotPresent
+
+auth:
+  username: appuser
+  database: products
+  password: ""
+  existingSecret: postgres-auth
+  keys:
+    username: POSTGRES_USER
+    password: POSTGRES_PASSWORD
+    database: POSTGRES_DB
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  enabled: true
+  storageClassName: ebs-csi-gp3
+  accessModes:
+    - ReadWriteOnce
+  size: 8Gi
+
+postgresDataDir: /var/lib/postgresql/data/pgdata
+
+resources: {}

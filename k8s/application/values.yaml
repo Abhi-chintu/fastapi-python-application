@@ -1,0 +1,34 @@
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+gateway:
+  replicaCount: 2
+  image:
+    repository: python-eks-gateway
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+  service:
+    type: LoadBalancer
+    port: 80
+  resources: {}
+
+products:
+  replicaCount: 1
+  image:
+    repository: python-eks-products
+    tag: "1.0"
+    pullPolicy: IfNotPresent
+  service:
+    port: 8001
+  resources: {}
+
+database:
+  host: postgres
+  port: 5432
+  existingSecret: postgres-auth
+  keys:
+    database: POSTGRES_DB
+    username: POSTGRES_USER
+    password: POSTGRES_PASSWORD

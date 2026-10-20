@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "application.fullname" . }}-products
+  labels:
+    {{- include "application.labels" . | nindent 4 }}
+    app.kubernetes.io/component: products
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.products.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: products
