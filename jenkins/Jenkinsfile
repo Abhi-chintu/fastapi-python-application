@@ -1,0 +1,134 @@
+def pipelineHelper
+
+pipeline {
+    agent any
+
+    triggers {
+        GenericTrigger(
+            genericVariables: [
+                [key: 'ref', value: '$.ref'],
+                [key: 'action', value: '$.action'],
+                [key: 'base_ref', value: '$.pull_request.base.ref'],
+                [key: 'merged', value: '$.pull_request.merged']
+            ],
+            causeString: 'GitHub webhook: $ref $action',
+            tokenCredentialId: 'github-webhook-token',
+            printContributedVariables: false,
+            printPostContent: false
+        )
+    }
+
+    environment {
+        AWS_REGION = 'ap-south-1'
+        ECR_REGISTRY = '123456789012.dkr.ecr.ap-south-1.amazonaws.com'
+        REPOSITORY_URL = 'https://github.com/Abhi-chintu/fastapi-python-application.git'
+    }
+
+    stages {
+        stage('Load pipeline helpers') {
+            steps {
+                script {
+                    pipelineHelper = load 'jenkins/pipeline.groovy'
+                    env.IS_MERGED_PR = pipelineHelper.isMergedMasterPullRequest(
+                        env.action,
+                        env.base_ref,
+                        env.merged
+                    ) ? 'true' : 'false'
+                    env.RUN_CI = (
+                        env.IS_MERGED_PR == 'true' ||
+                        pipelineHelper.isFeatureBranchPush(env.ref)
+                    ) ? 'true' : 'false'
+                    if (env.RUN_CI != 'true') {
+                        echo 'Ignoring webhook: only feature branch pushes and merged PRs to master run this pipeline.'
+                    }
+                }
+            }
+        }
+
+        stage('Checkout') {
+            when {
+                environment name: 'RUN_CI', value: 'true'
+            }
+            steps {
+                script {
+                    def checkoutRef = pipelineHelper.checkoutRef(
+                        env.ref,
+                        env.IS_MERGED_PR
+                    )
+                    def checkoutResult = checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: checkoutRef]],
+                        userRemoteConfigs: [[url: env.REPOSITORY_URL]]
+                    ])
+                    env.IMAGE_TAG = checkoutResult.GIT_COMMIT.take(7)
+                }
+            }
+        }
+
+        stage('Install CI dependencies') {
+            when {
+                environment name: 'RUN_CI', value: 'true'
+            }
+            steps {
+                sh 'make -f jenkins/Makefile ci-setup'
+            }
+        }
+
+        stage('Lint') {
+            when {
+                environment name: 'RUN_CI', value: 'true'
+            }
+            steps {
+                sh 'make -f jenkins/Makefile lint'
+            }
+        }
+
+        stage('Static analysis') {
+            when {
+                environment name: 'RUN_CI', value: 'true'
+            }
+            steps {
+                sh 'make -f jenkins/Makefile static-analysis'
+            }
+        }
+
+        stage('Code coverage') {
+            when {
+                environment name: 'RUN_CI', value: 'true'
+            }
+            steps {
+                sh 'make -f jenkins/Makefile coverage'
+            }
+        }
+
+        stage('Docker build') {
+            when {
+                environment name: 'IS_MERGED_PR', value: 'true'
+            }
+            steps {
+                script {
+                    pipelineHelper.buildImages(
+                        env.ECR_REGISTRY,
+                        env.IMAGE_TAG
+                    )
+                }
+            }
+        }
+
+        stage('Docker push') {
+            when {
+                environment name: 'IS_MERGED_PR', value: 'true'
+            }
+            steps {
+                script {
+                    pipelineHelper.pushImages(
+                        env.AWS_REGION,
+                        env.ECR_REGISTRY,
+                        env.IMAGE_TAG,
+                        'aws-ecr-credentials'
+                    )
+                }
+            }
+        }
+    }
+}
