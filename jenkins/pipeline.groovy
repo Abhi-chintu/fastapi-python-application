@@ -1,15 +1,66 @@
-boolean isFeatureBranchPush(String ref) {
-    return ref?.startsWith('refs/heads/') && ref != 'refs/heads/master'
+boolean shouldRunCI(
+    String eventType,
+    String action,
+    String baseRef,
+    String headSha,
+    String ref,
+    String reviewState,
+    String reviewCommit,
+    String commitSha
+) {
+    if (eventType == 'push') {
+        return ref?.startsWith('refs/heads/') &&
+            ref != 'refs/heads/master' &&
+            isCommitSha(commitSha)
+    }
+
+    if (eventType == 'pull_request') {
+        return baseRef == 'master' &&
+            action in ['opened', 'reopened', 'synchronize', 'ready_for_review'] &&
+            isCommitSha(headSha)
+    }
+
+    return shouldPublish(
+        eventType,
+        action,
+        baseRef,
+        headSha,
+        reviewState,
+        reviewCommit
+    )
 }
 
-boolean isMergedMasterPullRequest(String action, String baseRef, String merged) {
-    return action == 'closed' &&
+boolean shouldPublish(
+    String eventType,
+    String action,
+    String baseRef,
+    String headSha,
+    String reviewState,
+    String reviewCommit
+) {
+    return eventType == 'pull_request_review' &&
+        action == 'submitted' &&
+        reviewState == 'approved' &&
         baseRef == 'master' &&
-        merged?.toBoolean()
+        isCommitSha(headSha) &&
+        reviewCommit == headSha
 }
 
-String checkoutRef(String ref, String isMergedPullRequest) {
-    return isMergedPullRequest == 'true' ? 'refs/heads/master' : ref
+boolean isCommitSha(String sha) {
+    return sha != null &&
+        sha != '0000000000000000000000000000000000000000' &&
+        sha ==~ /(?i)[0-9a-f]{40}/
+}
+
+String checkoutSha(String eventType, String commitSha, String headSha) {
+    return eventType == 'push' ? commitSha : headSha
+}
+
+String imageTag(String prNumber, String headSha) {
+    if (!(prNumber ==~ /[0-9]+/) || !isCommitSha(headSha)) {
+        throw new IllegalArgumentException('Cannot create an image tag without a valid PR number and commit SHA.')
+    }
+    return "pr-${prNumber}-${headSha.take(7).toLowerCase()}"
 }
 
 void buildImages(String ecrRegistry, String imageTag) {
@@ -27,7 +78,7 @@ void pushImages(
         credentialsId: credentialsId
     ]]) {
         sh """
-            set -euo pipefail
+            set -eu
             aws ecr get-login-password --region '${awsRegion}' |
                 docker login --username AWS --password-stdin '${ecrRegistry}'
             make -f jenkins/Makefile docker-push ECR_REGISTRY='${ecrRegistry}' IMAGE_TAG='${imageTag}'

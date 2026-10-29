@@ -26,12 +26,10 @@ check-ecr:
 
 docker-build: check-ecr
 	docker build -f gateway/Dockerfile \
-		-t $(GATEWAY_IMAGE):$(IMAGE_TAG) -t $(GATEWAY_IMAGE):latest .
+		-t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
 	docker build -f products/Dockerfile \
-		-t $(PRODUCTS_IMAGE):$(IMAGE_TAG) -t $(PRODUCTS_IMAGE):latest products
+		-t $(PRODUCTS_IMAGE):$(IMAGE_TAG) products
 
 docker-push: check-ecr
 	docker push $(GATEWAY_IMAGE):$(IMAGE_TAG)
-	docker push $(GATEWAY_IMAGE):latest
 	docker push $(PRODUCTS_IMAGE):$(IMAGE_TAG)
-	docker push $(PRODUCTS_IMAGE):latest

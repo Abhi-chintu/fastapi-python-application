@@ -5,16 +5,25 @@ pipeline {
 
     triggers {
         GenericTrigger(
+            genericHeaderVariables: [
+                [key: 'github_event', name: 'X-GitHub-Event']
+            ],
             genericVariables: [
                 [key: 'ref', value: '$.ref'],
                 [key: 'action', value: '$.action'],
                 [key: 'base_ref', value: '$.pull_request.base.ref'],
-                [key: 'merged', value: '$.pull_request.merged']
+                [key: 'head_sha', value: '$.pull_request.head.sha'],
+                [key: 'commit_sha', value: '$.after'],
+                [key: 'pr_number', value: '$.pull_request.number'],
+                [key: 'review_state', value: '$.review.state'],
+                [key: 'review_commit', value: '$.review.commit_id']
             ],
-            causeString: 'GitHub webhook: $ref $action',
+            causeString: 'GitHub $github_event: $action',
             tokenCredentialId: 'github-webhook-token',
             printContributedVariables: false,
-            printPostContent: false
+            printPostContent: false,
+            regexpFilterText: '$github_event',
+            regexpFilterExpression: '^(push|pull_request|pull_request_review)$'
         )
     }
 
@@ -25,21 +34,44 @@ pipeline {
     }
 
     stages {
-        stage('Load pipeline helpers') {
+        stage('Prepare') {
             steps {
+                checkout scm
                 script {
                     pipelineHelper = load 'jenkins/pipeline.groovy'
-                    env.IS_MERGED_PR = pipelineHelper.isMergedMasterPullRequest(
+                    env.RUN_CI = pipelineHelper.shouldRunCI(
+                        env.github_event,
                         env.action,
                         env.base_ref,
-                        env.merged
+                        env.head_sha,
+                        env.ref,
+                        env.review_state,
+                        env.review_commit,
+                        env.commit_sha
                     ) ? 'true' : 'false'
-                    env.RUN_CI = (
-                        env.IS_MERGED_PR == 'true' ||
-                        pipelineHelper.isFeatureBranchPush(env.ref)
+                    env.RUN_PUBLISH = pipelineHelper.shouldPublish(
+                        env.github_event,
+                        env.action,
+                        env.base_ref,
+                        env.head_sha,
+                        env.review_state,
+                        env.review_commit
                     ) ? 'true' : 'false'
+                    env.CHECKOUT_SHA = pipelineHelper.checkoutSha(
+                        env.github_event,
+                        env.commit_sha,
+                        env.head_sha
+                    )
+                    if (env.RUN_PUBLISH == 'true') {
+                        env.IMAGE_TAG = pipelineHelper.imageTag(
+                            env.pr_number,
+                            env.head_sha
+                        )
+                    } else {
+                        env.IMAGE_TAG = ''
+                    }
                     if (env.RUN_CI != 'true') {
-                        echo 'Ignoring webhook: only feature branch pushes and merged PRs to master run this pipeline.'
+                        echo 'Ignoring webhook: no CI or publish action is required.'
                     }
                 }
             }
@@ -50,18 +82,11 @@ pipeline {
                 environment name: 'RUN_CI', value: 'true'
             }
             steps {
-                script {
-                    def checkoutRef = pipelineHelper.checkoutRef(
-                        env.ref,
-                        env.IS_MERGED_PR
-                    )
-                    def checkoutResult = checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: checkoutRef]],
-                        userRemoteConfigs: [[url: env.REPOSITORY_URL]]
-                    ])
-                    env.IMAGE_TAG = checkoutResult.GIT_COMMIT.take(7)
-                }
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: env.CHECKOUT_SHA]],
+                    userRemoteConfigs: [[url: env.REPOSITORY_URL]]
+                ])
             }
         }
 
@@ -103,21 +128,18 @@ pipeline {
 
         stage('Docker build') {
             when {
-                environment name: 'IS_MERGED_PR', value: 'true'
+                environment name: 'RUN_PUBLISH', value: 'true'
             }
             steps {
                 script {
-                    pipelineHelper.buildImages(
-                        env.ECR_REGISTRY,
-                        env.IMAGE_TAG
-                    )
+                    pipelineHelper.buildImages(env.ECR_REGISTRY, env.IMAGE_TAG)
                 }
             }
         }
 
         stage('Docker push') {
             when {
-                environment name: 'IS_MERGED_PR', value: 'true'
+                environment name: 'RUN_PUBLISH', value: 'true'
             }
             steps {
                 script {
