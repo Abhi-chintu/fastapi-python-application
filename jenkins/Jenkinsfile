@@ -3,30 +3,6 @@ def pipelineHelper
 pipeline {
     agent any
 
-    triggers {
-        GenericTrigger(
-            genericHeaderVariables: [
-                [key: 'github_event', name: 'X-GitHub-Event']
-            ],
-            genericVariables: [
-                [key: 'ref', value: '$.ref'],
-                [key: 'action', value: '$.action'],
-                [key: 'base_ref', value: '$.pull_request.base.ref'],
-                [key: 'head_sha', value: '$.pull_request.head.sha'],
-                [key: 'commit_sha', value: '$.after'],
-                [key: 'pr_number', value: '$.pull_request.number'],
-                [key: 'review_state', value: '$.review.state'],
-                [key: 'review_commit', value: '$.review.commit_id']
-            ],
-            causeString: 'GitHub $github_event: $action',
-            tokenCredentialId: 'github-webhook-token',
-            printContributedVariables: false,
-            printPostContent: false,
-            regexpFilterText: '$github_event',
-            regexpFilterExpression: '^(push|pull_request|pull_request_review)$'
-        )
-    }
-
     environment {
         AWS_REGION = 'ap-south-1'
         ECR_REGISTRY = '123456789012.dkr.ecr.ap-south-1.amazonaws.com'
@@ -40,7 +16,7 @@ pipeline {
                 script {
                     pipelineHelper = load 'jenkins/pipeline.groovy'
                     env.RUN_CI = pipelineHelper.shouldRunCI(
-                        env.github_event,
+                        env['X-GitHub-Event'],
                         env.action,
                         env.base_ref,
                         env.head_sha,
@@ -50,7 +26,7 @@ pipeline {
                         env.commit_sha
                     ) ? 'true' : 'false'
                     env.RUN_PUBLISH = pipelineHelper.shouldPublish(
-                        env.github_event,
+                        env['X-GitHub-Event'],
                         env.action,
                         env.base_ref,
                         env.head_sha,
@@ -58,7 +34,7 @@ pipeline {
                         env.review_commit
                     ) ? 'true' : 'false'
                     env.CHECKOUT_SHA = pipelineHelper.checkoutSha(
-                        env.github_event,
+                        env['X-GitHub-Event'],
                         env.commit_sha,
                         env.head_sha
                     )
