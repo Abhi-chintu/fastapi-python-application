@@ -1,131 +1,79 @@
-def pipelineHelper
-
 pipeline {
     agent any
-
+    
     environment {
         AWS_REGION = 'ap-south-1'
-        ECR_REGISTRY = '123456789012.dkr.ecr.ap-south-1.amazonaws.com'
-        REPOSITORY_URL = 'https://github.com/Abhi-chintu/fastapi-python-application.git'
+        AWS_ACCOUNT_ID = '637423245256'
+
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        GATEWAY_REPO = "${ECR_REGISTRY}/demo/gateway"
+        PRODUCTS_REPO = "${ECR_REGISTRY}/demo/product"
+
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
-
     stages {
-        stage('Prepare') {
+        stage('Checkout'){
             steps {
-                checkout scm
-                script {
-                    pipelineHelper = load 'jenkins/pipeline.groovy'
-                    env.RUN_CI = pipelineHelper.shouldRunCI(
-                        env.github_event,
-                        env.action,
-                        env.base_ref,
-                        env.head_sha,
-                        env.ref,
-                        env.review_state,
-                        env.review_commit,
-                        env.commit_sha
-                    ) ? 'true' : 'false'
-                    env.RUN_PUBLISH = pipelineHelper.shouldPublish(
-                        env.github_event,
-                        env.action,
-                        env.base_ref,
-                        env.head_sha,
-                        env.review_state,
-                        env.review_commit
-                    ) ? 'true' : 'false'
-                    env.CHECKOUT_SHA = pipelineHelper.checkoutSha(
-                        env.github_event,
-                        env.commit_sha,
-                        env.head_sha
-                    )
-                    if (env.RUN_PUBLISH == 'true') {
-                        env.IMAGE_TAG = pipelineHelper.imageTag(
-                            env.pr_number,
-                            env.head_sha
-                        )
-                    } else {
-                        env.IMAGE_TAG = ''
-                    }
-                    if (env.RUN_CI != 'true') {
-                        echo 'Ignoring webhook: no CI or publish action is required.'
-                    }
-                }
+                git branch: 'jenkins', url: 'https://github.com/Abhi-chintu/fastapi-python-application.git'
             }
         }
-
-        stage('Checkout') {
-            when {
-                environment name: 'RUN_CI', value: 'true'
-            }
+        stage('Static Analysis'){
             steps {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: env.CHECKOUT_SHA]],
-                    userRemoteConfigs: [[url: env.REPOSITORY_URL]]
-                ])
+                echo 'Running Gitleaks security scan...'
+
+        sh '''
+            gitleaks git \
+                --log-opts="--all" \
+                --report-format json \
+                --report-path gitleaks-report.json \
+                --redact=100 \
+                --exit-code 1 \
+                .
+        '''
             }
         }
+        stage('UT Coverage'){
+            steps{
+                echo 'Running Pylint for Gateway and Products'
 
-        stage('Install CI dependencies') {
-            when {
-                environment name: 'RUN_CI', value: 'true'
-            }
-            steps {
-                sh 'make -f jenkins/Makefile ci-setup'
+        sh '''
+            /opt/pylint-venv/bin/pylint gateway \
+                --output-format=text \
+                --exit-zero > pylint-gateway-report.txt
+
+            /opt/pylint-venv/bin/pylint products \
+                --output-format=text \
+                --exit-zero > pylint-products-report.txt
+
+            echo "Pylint analysis completed"
+
+            cat pylint-gateway-report.txt
+            cat pylint-products-report.txt
+        '''
             }
         }
-
-        stage('Lint') {
-            when {
-                environment name: 'RUN_CI', value: 'true'
-            }
+        stage('Docker Build'){
             steps {
-                sh 'make -f jenkins/Makefile lint'
+                sh '''
+                    docker build -t $GATEWAY_REPO:$IMAGE_TAG \
+                        -f gateway/Dockerfile .
+
+                    docker build -t $PRODUCTS_REPO:$IMAGE_TAG \
+                        -f products/Dockerfile ./products 
+                '''
             }
         }
-
-        stage('Static analysis') {
-            when {
-                environment name: 'RUN_CI', value: 'true'
-            }
-            steps {
-                sh 'make -f jenkins/Makefile static-analysis'
-            }
-        }
-
-        stage('Code coverage') {
-            when {
-                environment name: 'RUN_CI', value: 'true'
-            }
-            steps {
-                sh 'make -f jenkins/Makefile coverage'
-            }
-        }
-
-        stage('Docker build') {
-            when {
-                environment name: 'RUN_PUBLISH', value: 'true'
-            }
-            steps {
-                script {
-                    pipelineHelper.buildImages(env.ECR_REGISTRY, env.IMAGE_TAG)
-                }
-            }
-        }
-
-        stage('Docker push') {
-            when {
-                environment name: 'RUN_PUBLISH', value: 'true'
-            }
-            steps {
-                script {
-                    pipelineHelper.pushImages(
-                        env.AWS_REGION,
-                        env.ECR_REGISTRY,
-                        env.IMAGE_TAG,
-                        'aws-ecr-credentials'
-                    )
-                }
+        stage('Docker Push'){
+            steps{
+                sh '''
+                aws ecr get-login-password --region $AWS_REGION |
+                    docker login --username AWS \
+                        --password-stdin $ECR_REGISTRY
+                        
+                    docker push $GATEWAY_REPO:$IMAGE_TAG
+                    docker push $PRODUCTS_REPO:$IMAGE_TAG
+                '''
             }
         }
     }
