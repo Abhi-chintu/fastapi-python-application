@@ -85,5 +85,3 @@ void pushImages(
         """
     }
 }
-
-return this
