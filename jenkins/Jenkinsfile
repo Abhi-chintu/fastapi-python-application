@@ -1,6 +1,11 @@
+
 pipeline {
     agent any
-    
+
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
         AWS_REGION = 'ap-south-1'
         AWS_ACCOUNT_ID = '637423245256'
@@ -12,69 +17,122 @@ pipeline {
 
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
+
     stages {
-        stage('Checkout'){
+        stage('Checkout') {
             steps {
-                git branch: 'jenkins', url: 'https://github.com/Abhi-chintu/fastapi-python-application.git'
-            }
-        }
-        stage('Static Analysis'){
-            steps {
-                echo 'Running Gitleaks security scan...'
+                checkout scm
 
-        sh '''
-            gitleaks git \
-                --log-opts="--all" \
-                --report-format json \
-                --report-path gitleaks-report.json \
-                --redact=100 \
-                --exit-code 1 \
-                .
-        '''
-            }
-        }
-        stage('UT Coverage'){
-            steps{
-                echo 'Running Pylint for Gateway and Products'
-
-        sh '''
-            /opt/pylint-venv/bin/pylint gateway \
-                --output-format=text \
-                --exit-zero > pylint-gateway-report.txt
-
-            /opt/pylint-venv/bin/pylint products \
-                --output-format=text \
-                --exit-zero > pylint-products-report.txt
-
-            echo "Pylint analysis completed"
-
-            cat pylint-gateway-report.txt
-            cat pylint-products-report.txt
-        '''
-            }
-        }
-        stage('Docker Build'){
-            steps {
                 sh '''
-                    docker build -t $GATEWAY_REPO:$IMAGE_TAG \
-                        -f gateway/Dockerfile .
-
-                    docker build -t $PRODUCTS_REPO:$IMAGE_TAG \
-                        -f products/Dockerfile ./products 
+                    echo "Branch: $BRANCH_NAME"
+                    echo "PR ID: $CHANGE_ID"
+                    git log -1 --oneline
                 '''
             }
         }
-        stage('Docker Push'){
-            steps{
+
+        stage('Static Analysis') {
+            steps {
+                echo 'Running Gitleaks'
+
                 sh '''
-                aws ecr get-login-password --region $AWS_REGION |
-                    docker login --username AWS \
+                    gitleaks git \
+                        --report-format json \
+                        --report-path gitleaks-report.json \
+                        --redact=100 \
+                        --exit-code 1 \
+                        .
+                '''
+            }
+        }
+
+        stage('UT Coverage') {
+            steps {
+                echo 'Running Pylint'
+
+                sh '''
+                    /opt/pylint-venv/bin/pylint gateway \
+                        --exit-zero \
+                        > pylint-gateway-report.txt
+
+                    /opt/pylint-venv/bin/pylint products \
+                        --exit-zero \
+                        > pylint-products-report.txt
+
+                    cat pylint-gateway-report.txt
+                    cat pylint-products-report.txt
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            when {
+                allOf {
+                    branch 'jenkins'
+                    not {
+                        changeRequest()
+                    }
+                }
+            }
+
+            steps {
+                echo 'Building Docker images'
+
+                sh '''
+                    docker build \
+                        -t $GATEWAY_REPO:$IMAGE_TAG \
+                        -f gateway/Dockerfile .
+
+                    docker build \
+                        -t $PRODUCTS_REPO:$IMAGE_TAG \
+                        -f products/Dockerfile ./products
+                '''
+            }
+        }
+
+        stage('Docker Push') {
+            when {
+                allOf {
+                    branch 'jenkins'
+                    not {
+                        changeRequest()
+                    }
+                }
+            }
+
+            steps {
+                echo 'Pushing images to AWS ECR'
+
+                sh '''
+                    set -e
+
+                    aws ecr get-login-password \
+                        --region $AWS_REGION |
+                    docker login \
+                        --username AWS \
                         --password-stdin $ECR_REGISTRY
-                        
+
                     docker push $GATEWAY_REPO:$IMAGE_TAG
                     docker push $PRODUCTS_REPO:$IMAGE_TAG
                 '''
             }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'gitleaks-report.json,pylint-*-report.txt',
+                allowEmptyArchive: true
+            )
+        }
+
+        success {
+            echo 'Pipeline completed successfully'
+        }
+
+        failure {
+            echo 'Pipeline failed'
         }
     }
 }
