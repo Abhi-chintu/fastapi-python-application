@@ -16,10 +16,20 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
-    stages {
+    stages {        
         stage('Determine Build Mode') {
             steps {
                 script {
+                    echo '===== WEBHOOK DEBUG ====='
+
+                    echo "github_event = ${env.github_event ?: 'NOT_SET'}"
+                    echo "event_action = ${env.event_action ?: 'NOT_SET'}"
+                    echo "repo_name = ${env.repo_name ?: 'NOT_SET'}"
+                    echo "pr_base = ${env.pr_base ?: 'NOT_SET'}"
+                    echo "pr_sha = ${env.pr_sha ?: 'NOT_SET'}"
+                    echo "push_ref = ${env.push_ref ?: 'NOT_SET'}"
+                    echo "push_sha = ${env.push_sha ?: 'NOT_SET'}"
+
                     env.BUILD_MODE = 'SKIP'
 
                     if (env.repo_name ==
@@ -41,14 +51,12 @@ pipeline {
                         }
                     }
 
-                    echo "GitHub Event: ${env.github_event ?: 'NOT_SET'}"
-                    echo "Event Action: ${env.event_action ?: 'NOT_SET'}"
-                    echo "PR Base: ${env.pr_base ?: 'NOT_SET'}"
-                    echo "Push Ref: ${env.push_ref ?: 'NOT_SET'}"
-                    echo "Build Mode: ${env.BUILD_MODE}"
+                    echo "BUILD_MODE = ${env.BUILD_MODE}"
+                    echo '========================='
                 }
             }
         }
+
 
         stage('Checkout') {
             when {
