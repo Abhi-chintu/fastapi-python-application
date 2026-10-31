@@ -17,13 +17,13 @@ def runPylint() {
 
 def buildDocker() {
     sh '''
-        make -f jenkins/Makefile docker-build IMAGE_TAG="$BUILD_NUMBER"
+        make -f jenkins/Makefile docker-build IMAGE_TAG="$IMAGE_TAG"
     '''
 }
 
 def pushDocker() {
     sh '''
-        make -f jenkins/Makefile docker-push IMAGE_TAG="$BUILD_NUMBER"
+        make -f jenkins/Makefile docker-push IMAGE_TAG="$IMAGE_TAG"
     '''
 }
 

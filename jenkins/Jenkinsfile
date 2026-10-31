@@ -16,7 +16,6 @@ pipeline {
         GATEWAY_REPO = "${ECR_REGISTRY}/demo/gateway"
         PRODUCTS_REPO = "${ECR_REGISTRY}/demo/product"
 
-        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
@@ -55,6 +54,14 @@ pipeline {
 
                             env.BUILD_MODE = 'MERGED_BRANCH'
                         }
+
+                        else if (
+                            eventType == 'push' &&
+                            ref ==~ /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+                        ) {
+                            env.BUILD_MODE = 'RELEASE'
+                            env.IMAGE_TAG = ref.substring('refs/tags/'.length())
+                        }
                     }
 
                     echo "BUILD_MODE = ${env.BUILD_MODE}"
@@ -63,6 +70,7 @@ pipeline {
         }
 
 
+        
         stage('Checkout') {
             when {
                 expression {
@@ -72,59 +80,34 @@ pipeline {
 
             steps {
                 script {
-                    def expectedSha = ''
+                    def branch = ''
 
                     if (env.BUILD_MODE == 'PR_VALIDATION') {
-                        expectedSha = env.pr_sha ?: ''
+                        branch = env.pr_sha
 
-                    } else {
-                        expectedSha = env.push_sha ?: ''
+                    } else if (env.BUILD_MODE == 'MERGED_BRANCH') {
+                        branch = env.push_sha
+
+                    } else if (env.BUILD_MODE == 'RELEASE') {
+                        branch = "refs/tags/${env.IMAGE_TAG}"
                     }
-
-                    if (!(expectedSha ==~ /^[0-9a-fA-F]{40}$/)) {
-                        error('Invalid Git SHA')
-                    }
-
-                    def refspec = env.BUILD_MODE == 'PR_VALIDATION'
-                        ? '+refs/pull/*/head:refs/remotes/origin/pr/*'
-                        : '+refs/heads/jenkins:refs/remotes/origin/jenkins'
 
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: expectedSha]],
+                        branches: [[name: branch]],
                         userRemoteConfigs: [[
                             url: 'https://github.com/Abhi-chintu/fastapi-python-application.git',
-                            refspec: refspec
-                        ]],
-                        extensions: [
-                            [$class: 'CleanBeforeCheckout']
-                        ]
+                            refspec: '+refs/heads/*:refs/remotes/origin/* ' +
+                                    '+refs/pull/*/head:refs/remotes/origin/pr/* ' +
+                                    '+refs/tags/*:refs/tags/*'
+                        ]]
                     ])
 
-                    def actualSha = sh(
-                        script: 'git rev-parse HEAD',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!actualSha.equalsIgnoreCase(expectedSha)) {
-                        error('Git checkout SHA mismatch')
-                    }
-
-                    if (env.BUILD_MODE == 'MERGED_BRANCH') {
-                        def branchSha = sh(
-                            script: 'git rev-parse refs/remotes/origin/jenkins',
-                            returnStdout: true
-                        ).trim()
-
-                        if (!branchSha.equalsIgnoreCase(expectedSha)) {
-                            error('Commit is not current jenkins branch tip')
-                        }
-                    }
-
-                    echo "Verified SHA: ${actualSha}"
+                    echo "Checked out: ${branch}"
                 }
             }
         }
+
 
         stage('Load Functions') {
             when {
@@ -171,7 +154,7 @@ pipeline {
         stage('Docker Build') {
             when {
                 expression {
-                    env.BUILD_MODE == 'MERGED_BRANCH'
+                    env.BUILD_MODE == 'RELEASE'
                 }
             }
 
@@ -185,7 +168,7 @@ pipeline {
         stage('Docker Push') {
             when {
                 expression {
-                    env.BUILD_MODE == 'MERGED_BRANCH'
+                    env.BUILD_MODE == 'RELEASE'
                 }
             }
 
