@@ -62,6 +62,16 @@ pipeline {
                             env.BUILD_MODE = 'RELEASE'
                             env.IMAGE_TAG = ref.substring('refs/tags/'.length())
                         }
+
+                        else if (
+                            eventType == 'release' &&
+                            action in ['released', 'published'] &&
+                            (env.release_tag ?: '') ==~
+                                /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
+                        ) {
+                            env.BUILD_MODE = 'RELEASE'
+                            env.IMAGE_TAG = env.release_tag
+                        }
                     }
 
                     echo "BUILD_MODE = ${env.BUILD_MODE}"
