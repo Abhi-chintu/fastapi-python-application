@@ -19,67 +19,61 @@ pipeline {
     }
 
     stages {
-
         
-        stage('Determine Build Mode') {
-            steps {
-                script {
-                    env.BUILD_MODE = 'SKIP'
+stage('Determine Build Mode') {
+    steps {
+        script {
+            env.BUILD_MODE = 'SKIP'
 
-                    def eventType = (env.x_github_event ?: '').trim()
-                    def action = (env.event_action ?: '').trim()
-                    def repo = (env.repo_name ?: '').trim()
-                    def base = (env.pr_base ?: '').trim()
-                    def ref = (env.push_ref ?: '').trim()
+            def eventType = (env.x_github_event ?: '').trim()
+            def action = (env.event_action ?: '').trim()
+            def repo = (env.repo_name ?: '').trim()
+            def base = (env.pr_base ?: '').trim()
+            def ref = (env.push_ref ?: '').trim()
+            def releaseTag = (env.release_tag ?: '').trim()
 
-                    echo "===== WEBHOOK DEBUG ====="
-                    echo "Event: ${eventType}"
-                    echo "Action: ${action}"
-                    echo "Repository: ${repo}"
-                    echo "PR Base: ${base}"
-                    echo "PR SHA: ${env.pr_sha ?: 'NOT_SET'}"
-                    echo "Push Ref: ${ref}"
-                    echo "========================="
+            def versionPattern =
+                'v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)'
 
-                    if (repo == 'Abhi-chintu/fastapi-python-application') {
+            echo "===== WEBHOOK DEBUG ====="
+            echo "Event: ${eventType}"
+            echo "Action: ${action}"
+            echo "Repository: ${repo}"
+            echo "PR Base: ${base}"
+            echo "Push Ref: ${ref}"
+            echo "Release Tag: ${releaseTag}"
+            echo "========================="
 
-                        if (eventType == 'pull_request' &&
-                            action in ['opened', 'reopened', 'synchronize'] &&
-                            base == 'jenkins') {
+            if (repo == 'Abhi-chintu/fastapi-python-application') {
 
-                            env.BUILD_MODE = 'PR_VALIDATION'
+                if (eventType == 'pull_request' &&
+                    action in ['opened', 'reopened', 'synchronize'] &&
+                    base == 'jenkins') {
 
-                        } else if (eventType == 'push' &&
-                                ref == 'refs/heads/jenkins') {
+                    env.BUILD_MODE = 'PR_VALIDATION'
 
-                            env.BUILD_MODE = 'MERGED_BRANCH'
-                        }
+                } else if (eventType == 'push' &&
+                           ref == 'refs/heads/jenkins') {
 
-                        else if (
-                            eventType == 'push' &&
-                            ref ==~ /^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
-                        ) {
-                            env.BUILD_MODE = 'RELEASE'
-                            env.IMAGE_TAG = ref.substring('refs/tags/'.length())
-                        }
+                    env.BUILD_MODE = 'MERGED_BRANCH'
 
-                        else if (
-                            eventType == 'release' &&
-                            action in ['released', 'published'] &&
-                            (env.release_tag ?: '') ==~
-                                /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
-                        ) {
-                            env.BUILD_MODE = 'RELEASE'
-                            env.IMAGE_TAG = env.release_tag
-                        }
-                    }
+                } else if (eventType == 'release' &&
+                           action == 'released' &&
+                           releaseTag ==~ versionPattern) {
 
-                    echo "BUILD_MODE = ${env.BUILD_MODE}"
+                    env.BUILD_MODE = 'RELEASE'
+                    env.IMAGE_TAG = releaseTag
                 }
             }
+
+            echo "BUILD_MODE = ${env.BUILD_MODE}"
+
+            if (env.BUILD_MODE == 'RELEASE') {
+                echo "IMAGE_TAG = ${env.IMAGE_TAG}"
+            }
         }
-
-
+    }
+}
         
         stage('Checkout') {
             when {
