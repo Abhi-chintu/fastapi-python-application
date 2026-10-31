@@ -1,5 +1,11 @@
+
 pipeline {
     agent any
+
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+    }
 
     environment {
         AWS_REGION = 'ap-south-1'
@@ -11,13 +17,59 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
+        stage('Determine Build Mode') {
             steps {
-                checkout scm
+                script {
+                    env.BUILD_MODE = 'SKIP'
+
+                    if (env.repo_name ==
+                        'Abhi-chintu/fastapi-python-application') {
+
+                        if (env.github_event == 'pull_request' &&
+                            env.event_action in [
+                                'opened', 'reopened', 'synchronize'
+                            ] &&
+                            env.pr_base == 'jenkins') {
+
+                            env.BUILD_MODE = 'PR_VALIDATION'
+
+                        } else if (
+                            env.github_event == 'push' &&
+                            env.push_ref == 'refs/heads/jenkins'
+                        ) {
+                            env.BUILD_MODE = 'MERGED_BRANCH'
+                        }
+                    }
+
+                    echo "GitHub Event: ${env.github_event ?: 'NOT_SET'}"
+                    echo "Event Action: ${env.event_action ?: 'NOT_SET'}"
+                    echo "PR Base: ${env.pr_base ?: 'NOT_SET'}"
+                    echo "Push Ref: ${env.push_ref ?: 'NOT_SET'}"
+                    echo "Build Mode: ${env.BUILD_MODE}"
+                }
+            }
+        }
+
+        stage('Checkout') {
+            when {
+                expression {
+                    env.BUILD_MODE != 'SKIP'
+                }
+            }
+            steps {
+                error(
+                    'Verified PR/branch checkout must be ' +
+                    'configured before enabling builds.'
+                )
             }
         }
 
         stage('Load Pipeline Functions') {
+            when {
+                expression {
+                    env.BUILD_MODE != 'SKIP'
+                }
+            }
             steps {
                 script {
                     pipelineUtils = load 'jenkins/pipeline.groovy'
@@ -26,6 +78,14 @@ pipeline {
         }
 
         stage('Static Analysis') {
+            when {
+                expression {
+                    env.BUILD_MODE in [
+                        'PR_VALIDATION',
+                        'MERGED_BRANCH'
+                    ]
+                }
+            }
             steps {
                 script {
                     pipelineUtils.runGitleaks()
@@ -34,6 +94,14 @@ pipeline {
         }
 
         stage('UT Coverage') {
+            when {
+                expression {
+                    env.BUILD_MODE in [
+                        'PR_VALIDATION',
+                        'MERGED_BRANCH'
+                    ]
+                }
+            }
             steps {
                 script {
                     pipelineUtils.runPylint()
