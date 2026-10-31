@@ -22,7 +22,7 @@ pipeline {
                 script {
                     echo '===== WEBHOOK DEBUG ====='
 
-                    echo "github_event = ${env.github_event ?: 'NOT_SET'}"
+                    echo "github_event = ${env.x_github_event ?: 'NOT_SET'}"
                     echo "event_action = ${env.event_action ?: 'NOT_SET'}"
                     echo "repo_name = ${env.repo_name ?: 'NOT_SET'}"
                     echo "pr_base = ${env.pr_base ?: 'NOT_SET'}"
@@ -35,7 +35,7 @@ pipeline {
                     if (env.repo_name ==
                         'Abhi-chintu/fastapi-python-application') {
 
-                        if (env.github_event == 'pull_request' &&
+                        if (env.x_github_event == 'pull_request' &&
                             env.event_action in [
                                 'opened', 'reopened', 'synchronize'
                             ] &&
@@ -44,7 +44,7 @@ pipeline {
                             env.BUILD_MODE = 'PR_VALIDATION'
 
                         } else if (
-                            env.github_event == 'push' &&
+                            env.x_github_event == 'push' &&
                             env.push_ref == 'refs/heads/jenkins'
                         ) {
                             env.BUILD_MODE = 'MERGED_BRANCH'
