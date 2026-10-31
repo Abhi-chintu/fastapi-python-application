@@ -22,38 +22,47 @@ pipeline {
 
     stages {
 
+        
         stage('Determine Build Mode') {
             steps {
                 script {
                     env.BUILD_MODE = 'SKIP'
 
-                    if (env.repo_name ==
-                        'Abhi-chintu/fastapi-python-application') {
+                    def eventType = (env.x_github_event ?: '').trim()
+                    def action = (env.event_action ?: '').trim()
+                    def repo = (env.repo_name ?: '').trim()
+                    def base = (env.pr_base ?: '').trim()
+                    def ref = (env.push_ref ?: '').trim()
 
-                        if (
-                            env.x_github_event == 'pull_request' &&
-                            env.event_action in [
-                                'opened',
-                                'reopened',
-                                'synchronize'
-                            ] &&
-                            env.pr_base == 'jenkins'
-                        ) {
+                    echo "===== WEBHOOK DEBUG ====="
+                    echo "Event: ${eventType}"
+                    echo "Action: ${action}"
+                    echo "Repository: ${repo}"
+                    echo "PR Base: ${base}"
+                    echo "PR SHA: ${env.pr_sha ?: 'NOT_SET'}"
+                    echo "Push Ref: ${ref}"
+                    echo "========================="
+
+                    if (repo == 'Abhi-chintu/fastapi-python-application') {
+
+                        if (eventType == 'pull_request' &&
+                            action in ['opened', 'reopened', 'synchronize'] &&
+                            base == 'jenkins') {
+
                             env.BUILD_MODE = 'PR_VALIDATION'
 
-                        } else if (
-                            env.x_github_event == 'push' &&
-                            env.push_ref == 'refs/heads/jenkins'
-                        ) {
+                        } else if (eventType == 'push' &&
+                                ref == 'refs/heads/jenkins') {
+
                             env.BUILD_MODE = 'MERGED_BRANCH'
                         }
                     }
 
-                    echo "Event: ${env.x_github_event}"
-                    echo "Build Mode: ${env.BUILD_MODE}"
+                    echo "BUILD_MODE = ${env.BUILD_MODE}"
                 }
             }
         }
+
 
         stage('Checkout') {
             when {
