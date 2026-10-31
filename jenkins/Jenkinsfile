@@ -1,10 +1,11 @@
 
 pipeline {
-    agent any
+    agent none
 
     options {
         skipDefaultCheckout(true)
         disableConcurrentBuilds()
+        timestamps()
     }
 
     environment {
@@ -12,21 +13,22 @@ pipeline {
         AWS_ACCOUNT_ID = '637423245256'
 
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
         GATEWAY_REPO = "${ECR_REGISTRY}/demo/gateway"
         PRODUCTS_REPO = "${ECR_REGISTRY}/demo/product"
 
-        IMAGE_TAG = "${BUILD_NUMBER}"
+        BUILD_MODE = 'SKIP'
+        DEPLOY_ENABLED = 'false'
     }
 
     stages {
 
         stage('Determine Build Mode') {
+            agent { label 'pr-validation' }
+
             steps {
                 script {
-                    env.BUILD_MODE = 'SKIP'
-
                     def eventType = env.x_github_event ?: ''
+                    env.BUILD_MODE = 'SKIP'
 
                     echo "===== WEBHOOK DEBUG ====="
                     echo "github_event = ${eventType ?: 'NOT_SET'}"
@@ -65,163 +67,193 @@ pipeline {
             }
         }
 
-        stage('Checkout') {
+        stage('PR Validation') {
             when {
                 expression {
-                    env.BUILD_MODE in [
-                        'PR_VALIDATION',
-                        'MERGED_BRANCH'
-                    ]
+                    env.BUILD_MODE == 'PR_VALIDATION'
                 }
             }
 
-            steps {
-                script {
-                    def repoUrl =
-                        'https://github.com/Abhi-chintu/fastapi-python-application.git'
+            agent { label 'pr-validation' }
 
-                    def expectedSha = ''
+            stages {
+                stage('Checkout PR') {
+                    steps {
+                        script {
+                            def expectedSha = env.pr_sha ?: ''
 
-                    if (env.BUILD_MODE == 'PR_VALIDATION') {
-                        expectedSha = env.pr_sha ?: ''
+                            if (!(expectedSha ==~ /^[0-9a-fA-F]{40}$/)) {
+                                error('Invalid PR SHA')
+                            }
 
-                        echo "Checking out PR commit: ${expectedSha}"
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: expectedSha]],
+                                userRemoteConfigs: [[
+                                    url: 'https://github.com/Abhi-chintu/fastapi-python-application.git',
+                                    refspec: '+refs/pull/*/head:refs/remotes/origin/pr/*'
+                                ]],
+                                extensions: [
+                                    [$class: 'CleanBeforeCheckout']
+                                ]
+                            ])
 
-                        if (!(expectedSha ==~ /^[0-9a-fA-F]{40}$/)) {
-                            error('Invalid PR SHA')
+                            def actualSha = sh(
+                                script: 'git rev-parse HEAD',
+                                returnStdout: true
+                            ).trim()
+
+                            if (!actualSha.equalsIgnoreCase(expectedSha)) {
+                                error('PR checkout SHA mismatch')
+                            }
+
+                            echo "Verified PR SHA: ${actualSha}"
                         }
-
-                        checkout([
-                            $class: 'GitSCM',
-                            branches: [[name: expectedSha]],
-                            userRemoteConfigs: [[
-                                url: repoUrl,
-                                refspec: '+refs/pull/*/head:refs/remotes/origin/pr/*'
-                            ]],
-                            extensions: [
-                                [$class: 'CleanBeforeCheckout']
-                            ]
-                        ])
-
-                    } else if (env.BUILD_MODE == 'MERGED_BRANCH') {
-                        // Deployment remains blocked until the
-                        // trusted branch and agent are configured.
-                        error(
-                            'Trusted merged-branch deployment is not enabled yet.'
-                        )
                     }
+                }
 
-                    def actualSha = sh(
-                        script: 'git rev-parse HEAD',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!actualSha.equalsIgnoreCase(expectedSha)) {
-                        error(
-                            "Checkout SHA mismatch. " +
-                            "Expected ${expectedSha}, got ${actualSha}"
-                        )
+                stage('Load PR Functions') {
+                    steps {
+                        script {
+                            def utils = load 'jenkins/pipeline.groovy'
+                            utils.runGitleaks()
+                            utils.runPylint()
+                        }
                     }
+                }
+            }
 
-                    echo "Verified checkout SHA: ${actualSha}"
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'gitleaks-report.json,pylint-*-report.txt',
+                        allowEmptyArchive: true
+                    )
                 }
             }
         }
 
-        stage('Load Pipeline Functions') {
-            when {
-                expression {
-                    env.BUILD_MODE in [
-                        'PR_VALIDATION',
-                        'MERGED_BRANCH'
-                    ]
-                }
-            }
-
-            steps {
-                script {
-                    pipelineUtils = load 'jenkins/pipeline.groovy'
-                }
-            }
-        }
-
-        stage('Static Analysis') {
-            when {
-                expression {
-                    env.BUILD_MODE in [
-                        'PR_VALIDATION',
-                        'MERGED_BRANCH'
-                    ]
-                }
-            }
-
-            steps {
-                script {
-                    pipelineUtils.runGitleaks()
-                }
-            }
-        }
-
-        stage('UT Coverage') {
-            when {
-                expression {
-                    env.BUILD_MODE in [
-                        'PR_VALIDATION',
-                        'MERGED_BRANCH'
-                    ]
-                }
-            }
-
-            steps {
-                script {
-                    pipelineUtils.runPylint()
-                }
-            }
-        }
-
-        stage('Docker Build') {
+        stage('Merged Branch Build') {
             when {
                 expression {
                     env.BUILD_MODE == 'MERGED_BRANCH'
                 }
             }
 
-            steps {
-                script {
-                    pipelineUtils.buildDocker()
+            agent { label 'trusted-deploy' }
+
+            stages {
+                stage('Verify Deployment Authorization') {
+                    steps {
+                        script {
+                            if (env.DEPLOY_ENABLED != 'true') {
+                                error(
+                                    'Deployment disabled. Configure trusted ' +
+                                    'agent and webhook authentication first.'
+                                )
+                            }
+
+                            def expectedSha = env.push_sha ?: ''
+
+                            if (!(expectedSha ==~ /^[0-9a-fA-F]{40}$/)) {
+                                error('Invalid push SHA')
+                            }
+
+                            env.VERIFIED_SHA = expectedSha
+                            env.IMAGE_TAG = expectedSha.take(12)
+
+                            echo "Candidate deploy SHA: ${expectedSha}"
+                        }
+                    }
+                }
+
+                stage('Checkout Merged Branch') {
+                    steps {
+                        script {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: env.VERIFIED_SHA]],
+                                userRemoteConfigs: [[
+                                    url: 'https://github.com/Abhi-chintu/fastapi-python-application.git',
+                                    refspec: '+refs/heads/jenkins:refs/remotes/origin/jenkins'
+                                ]],
+                                extensions: [
+                                    [$class: 'CleanBeforeCheckout']
+                                ]
+                            ])
+
+                            def actualSha = sh(
+                                script: 'git rev-parse HEAD',
+                                returnStdout: true
+                            ).trim()
+
+                            def branchSha = sh(
+                                script: 'git rev-parse refs/remotes/origin/jenkins',
+                                returnStdout: true
+                            ).trim()
+
+                            if (!actualSha.equalsIgnoreCase(env.VERIFIED_SHA)) {
+                                error('Merged checkout SHA mismatch')
+                            }
+
+                            if (!branchSha.equalsIgnoreCase(env.VERIFIED_SHA)) {
+                                error(
+                                    'Push SHA is not current jenkins branch tip'
+                                )
+                            }
+
+                            echo "Verified merged SHA: ${actualSha}"
+                        }
+                    }
+                }
+
+                stage('Gitleaks and Pylint') {
+                    steps {
+                        script {
+                            def utils = load 'jenkins/pipeline.groovy'
+                            utils.runGitleaks()
+                            utils.runPylint()
+                        }
+                    }
+                }
+
+                stage('Docker Build') {
+                    steps {
+                        script {
+                            def utils = load 'jenkins/pipeline.groovy'
+                            utils.buildDocker()
+                        }
+                    }
+                }
+
+                stage('Docker Push') {
+                    steps {
+                        script {
+                            def utils = load 'jenkins/pipeline.groovy'
+                            utils.pushDocker()
+                        }
+                    }
                 }
             }
-        }
 
-        stage('Docker Push') {
-            when {
-                expression {
-                    env.BUILD_MODE == 'MERGED_BRANCH'
-                }
-            }
-
-            steps {
-                script {
-                    pipelineUtils.pushDocker()
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'gitleaks-report.json,pylint-*-report.txt',
+                        allowEmptyArchive: true
+                    )
                 }
             }
         }
     }
 
     post {
-        always {
-            archiveArtifacts(
-                artifacts: 'gitleaks-report.json,pylint-*-report.txt',
-                allowEmptyArchive: true
-            )
-        }
-
         success {
-            echo 'Pipeline completed successfully'
+            echo "Pipeline completed successfully"
         }
 
         failure {
-            echo 'Pipeline failed'
+            echo "Pipeline failed"
         }
     }
 }
