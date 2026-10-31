@@ -198,42 +198,43 @@ pipeline {
     }
 
     
-post {
-    always {
-        archiveArtifacts(
-            artifacts: 'gitleaks-report.json,pylint-*-report.txt',
-            allowEmptyArchive: true
-        )
-    }
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'gitleaks-report.json,pylint-*-report.txt',
+                allowEmptyArchive: true
+            )
+        }
 
-    success {
-        emailext(
-            to: 'your-email@example.com',
-            subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body: """Jenkins build successful.
+        success {
+            emailext(
+                to: 'your-email@example.com',
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """Jenkins build successful.
 
-Job: ${env.JOB_NAME}
-Build: ${env.BUILD_NUMBER}
-Result: SUCCESS
+    Job: ${env.JOB_NAME}
+    Build: ${env.BUILD_NUMBER}
+    Result: SUCCESS
 
-Console: ${env.BUILD_URL}console
-"""
-        )
-    }
+    Console: ${env.BUILD_URL}console
+    """
+            )
+        }
 
-    failure {
-        emailext(
-            to: 'your-email@example.com',
-            subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-            body: """Jenkins build failed.
+        failure {
+            emailext(
+                to: 'your-email@example.com',
+                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """Jenkins build failed.
 
-Job: ${env.JOB_NAME}
-Build: ${env.BUILD_NUMBER}
-Result: FAILURE
+    Job: ${env.JOB_NAME}
+    Build: ${env.BUILD_NUMBER}
+    Result: FAILURE
 
-Console: ${env.BUILD_URL}console
-""",
-            attachLog: true
-        )
+    Console: ${env.BUILD_URL}console
+    """,
+                attachLog: true
+            )
+        }
     }
 }
