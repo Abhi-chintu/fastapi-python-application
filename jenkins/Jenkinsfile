@@ -1,20 +1,12 @@
-
 pipeline {
     agent any
-
-    options {
-        skipDefaultCheckout(true)
-    }
 
     environment {
         AWS_REGION = 'ap-south-1'
         AWS_ACCOUNT_ID = '637423245256'
-
         ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-
         GATEWAY_REPO = "${ECR_REGISTRY}/demo/gateway"
         PRODUCTS_REPO = "${ECR_REGISTRY}/demo/product"
-
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
@@ -22,99 +14,56 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
 
-                sh '''
-                    echo "Branch: $BRANCH_NAME"
-                    echo "PR ID: $CHANGE_ID"
-                    git log -1 --oneline
-                '''
+        stage('Load Pipeline Functions') {
+            steps {
+                script {
+                    pipelineUtils = load 'pipeline.groovy'
+                }
             }
         }
 
         stage('Static Analysis') {
             steps {
-                echo 'Running Gitleaks'
-
-                sh '''
-                    gitleaks git \
-                        --report-format json \
-                        --report-path gitleaks-report.json \
-                        --redact=100 \
-                        --exit-code 1 \
-                        .
-                '''
+                script {
+                    pipelineUtils.runGitleaks()
+                }
             }
         }
 
         stage('UT Coverage') {
             steps {
-                echo 'Running Pylint'
-
-                sh '''
-                    /opt/pylint-venv/bin/pylint gateway \
-                        --exit-zero \
-                        > pylint-gateway-report.txt
-
-                    /opt/pylint-venv/bin/pylint products \
-                        --exit-zero \
-                        > pylint-products-report.txt
-
-                    cat pylint-gateway-report.txt
-                    cat pylint-products-report.txt
-                '''
+                script {
+                    pipelineUtils.runPylint()
+                }
             }
         }
 
         stage('Docker Build') {
             when {
-                allOf {
-                    branch 'jenkins'
-                    not {
-                        changeRequest()
-                    }
+                expression {
+                    env.BUILD_MODE == 'MERGED_BRANCH'
                 }
             }
-
             steps {
-                echo 'Building Docker images'
-
-                sh '''
-                    docker build \
-                        -t $GATEWAY_REPO:$IMAGE_TAG \
-                        -f gateway/Dockerfile .
-
-                    docker build \
-                        -t $PRODUCTS_REPO:$IMAGE_TAG \
-                        -f products/Dockerfile ./products
-                '''
+                script {
+                    pipelineUtils.buildDocker()
+                }
             }
         }
 
         stage('Docker Push') {
             when {
-                allOf {
-                    branch 'jenkins'
-                    not {
-                        changeRequest()
-                    }
+                expression {
+                    env.BUILD_MODE == 'MERGED_BRANCH'
                 }
             }
-
             steps {
-                echo 'Pushing images to AWS ECR'
-
-                sh '''
-                    set -e
-
-                    aws ecr get-login-password \
-                        --region $AWS_REGION |
-                    docker login \
-                        --username AWS \
-                        --password-stdin $ECR_REGISTRY
-
-                    docker push $GATEWAY_REPO:$IMAGE_TAG
-                    docker push $PRODUCTS_REPO:$IMAGE_TAG
-                '''
+                script {
+                    pipelineUtils.pushDocker()
+                }
             }
         }
     }
