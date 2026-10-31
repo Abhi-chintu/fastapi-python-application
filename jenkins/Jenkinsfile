@@ -16,61 +16,59 @@ pipeline {
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
-    stages {        
-        stage('Determine Build Mode') {
-            steps {
-                script {
-                    echo '===== WEBHOOK DEBUG ====='
-
-                    echo "github_event = ${env.x_github_event ?: 'NOT_SET'}"
-                    echo "event_action = ${env.event_action ?: 'NOT_SET'}"
-                    echo "repo_name = ${env.repo_name ?: 'NOT_SET'}"
-                    echo "pr_base = ${env.pr_base ?: 'NOT_SET'}"
-                    echo "pr_sha = ${env.pr_sha ?: 'NOT_SET'}"
-                    echo "push_ref = ${env.push_ref ?: 'NOT_SET'}"
-                    echo "push_sha = ${env.push_sha ?: 'NOT_SET'}"
-
-                    env.BUILD_MODE = 'SKIP'
-
-                    if (env.repo_name ==
-                        'Abhi-chintu/fastapi-python-application') {
-
-                        if (env.x_github_event == 'pull_request' &&
-                            env.event_action in [
-                                'opened', 'reopened', 'synchronize'
-                            ] &&
-                            env.pr_base == 'jenkins') {
-
-                            env.BUILD_MODE = 'PR_VALIDATION'
-
-                        } else if (
-                            env.x_github_event == 'push' &&
-                            env.push_ref == 'refs/heads/jenkins'
-                        ) {
-                            env.BUILD_MODE = 'MERGED_BRANCH'
-                        }
-                    }
-
-                    echo "BUILD_MODE = ${env.BUILD_MODE}"
-                    echo '========================='
-                }
-            }
-        }
-
-
+    stages {      
         stage('Checkout') {
             when {
                 expression {
                     env.BUILD_MODE != 'SKIP'
                 }
             }
+
             steps {
-                error(
-                    'Verified PR/branch checkout must be ' +
-                    'configured before enabling builds.'
-                )
+                script {
+                    def repoUrl =
+                        'https://github.com/Abhi-chintu/fastapi-python-application.git'
+
+                    if (env.BUILD_MODE == 'PR_VALIDATION') {
+                        echo "Checking out PR commit: ${env.pr_sha}"
+
+                        if (!(env.pr_sha ==~ /^[0-9a-fA-F]{40}$/)) {
+                            error('Invalid PR SHA')
+                        }
+
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: env.pr_sha]],
+                            userRemoteConfigs: [[
+                                url: repoUrl,
+                                refspec: '+refs/pull/*/head:refs/remotes/origin/pr/*'
+                            ]],
+                            extensions: [
+                                [$class: 'CleanBeforeCheckout']
+                            ]
+                        ])
+
+                        def actualSha = sh(
+                            script: 'git rev-parse HEAD',
+                            returnStdout: true
+                        ).trim()
+
+                        if (!actualSha.equalsIgnoreCase(env.pr_sha)) {
+                            error("PR checkout SHA mismatch")
+                        }
+
+                        echo "Verified PR commit: ${actualSha}"
+
+                    } else if (env.BUILD_MODE == 'MERGED_BRANCH') {
+                        error(
+                            'Trusted branch checkout and deployment ' +
+                            'authorization are not configured yet.'
+                        )
+                    }
+                }
             }
         }
+
 
         stage('Load Pipeline Functions') {
             when {
