@@ -20,7 +20,7 @@ pipeline {
         stage('Load Pipeline Functions') {
             steps {
                 script {
-                    pipelineUtils = load 'pipeline.groovy'
+                    pipelineUtils = load 'jenkins/pipeline.groovy'
                 }
             }
         }

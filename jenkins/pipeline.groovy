@@ -12,19 +12,19 @@ def runGitleaks() {
 
 def runPylint() {
     sh '''
-        make lint
+        make jenkins/Makefile lint
     '''
 }
 
 def buildDocker() {
     sh '''
-        make docker-build
+        sh 'make -f jenkins/Makefile docker-build IMAGE_TAG="$BUILD_NUMBER"'
     '''
 }
 
 def pushDocker() {
     sh '''
-        make docker-push
+        sh 'make -f jenkins/Makefile docker-push IMAGE_TAG="$BUILD_NUMBER"'
     '''
 }
 
