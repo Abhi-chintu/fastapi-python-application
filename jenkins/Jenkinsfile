@@ -17,7 +17,6 @@ pipeline {
         PRODUCTS_REPO = "${ECR_REGISTRY}/demo/product"
 
         IMAGE_TAG = "${BUILD_NUMBER}"
-        BUILD_MODE = 'SKIP'
     }
 
     stages {
